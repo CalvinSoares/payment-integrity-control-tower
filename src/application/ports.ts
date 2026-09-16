@@ -9,35 +9,38 @@ export type PaymentCoreResult = {
 };
 
 export interface PaymentRepository {
-  getById(id: string): Payment | undefined;
-  getByExternalPaymentId(tenantId: string, externalPaymentId: string): Payment | undefined;
-  insert(payment: Payment): void;
-  update(payment: Payment): void;
+  getById(id: string): Promise<Payment | undefined>;
+  getByExternalPaymentId(tenantId: string, externalPaymentId: string): Promise<Payment | undefined>;
+  insert(payment: Payment): Promise<void>;
+  update(payment: Payment): Promise<void>;
 }
 
 export interface LedgerRepository {
-  append(journal: LedgerJournal): void;
-  listByReference(referenceType: string, referenceId: string): LedgerJournal[];
+  append(journal: LedgerJournal): Promise<void>;
+  listByReference(referenceType: string, referenceId: string): Promise<LedgerJournal[]>;
 }
 
 export interface IdempotencyStore {
-  get(scope: IdempotencyScope): IdempotencyRecord<PaymentCoreResult> | undefined;
-  save(record: IdempotencyRecord<PaymentCoreResult>): void;
+  get(scope: IdempotencyScope): Promise<IdempotencyRecord<PaymentCoreResult> | undefined>;
+  save(record: IdempotencyRecord<PaymentCoreResult>): Promise<void>;
 }
 
 export interface AuditRepository {
-  append(event: AuditEvent): void;
-  listByEntity(entityType: string, entityId: string): AuditEvent[];
+  append(event: AuditEvent): Promise<void>;
+  listByEntity(entityType: string, entityId: string): Promise<AuditEvent[]>;
 }
 
 export interface TransactionRunner {
-  run<TResult>(work: () => TResult): TResult;
+  run<TResult>(work: (ports: RepositoryPorts) => Promise<TResult>): Promise<TResult>;
 }
 
-export type PaymentCorePorts = {
+export type RepositoryPorts = {
   payments: PaymentRepository;
   ledger: LedgerRepository;
   idempotency: IdempotencyStore;
   audit: AuditRepository;
+};
+
+export type PaymentCorePorts = RepositoryPorts & {
   transaction: TransactionRunner;
 };

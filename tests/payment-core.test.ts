@@ -48,9 +48,9 @@ function captureCommand(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createAuthorizedPayment(service: ReturnType<typeof createInMemoryPaymentCore>["service"]): void {
-  service.createPayment(baseCreateCommand);
-  service.transitionPayment({
+async function createAuthorizedPayment(service: ReturnType<typeof createInMemoryPaymentCore>["service"]): Promise<void> {
+  await service.createPayment(baseCreateCommand);
+  await service.transitionPayment({
     tenantId: "tenant_a",
     actorId: "operator_1",
     paymentId: "pay_001",
@@ -63,41 +63,41 @@ function createAuthorizedPayment(service: ReturnType<typeof createInMemoryPaymen
 }
 
 describe("PaymentCoreService", () => {
-  it("creates a payment in CREATED", () => {
+  it("creates a payment in CREATED", async () => {
     const { service, payments, audit } = createInMemoryPaymentCore();
-    const result = service.createPayment(baseCreateCommand);
+    const result = await service.createPayment(baseCreateCommand);
 
     expect(result.payment.state).toBe("CREATED");
-    expect(payments.getById("pay_001")?.amountMinor).toBe(10000);
+    expect((await payments.getById("pay_001"))?.amountMinor).toBe(10000);
     expect(audit.size).toBe(1);
   });
 
-  it("applies a valid transition and a balanced journal", () => {
+  it("applies a valid transition and a balanced journal", async () => {
     const { service, ledger } = createInMemoryPaymentCore();
-    createAuthorizedPayment(service);
-    const result = service.transitionPayment(captureCommand());
+    await createAuthorizedPayment(service);
+    const result = await service.transitionPayment(captureCommand());
 
     expect(result.payment.state).toBe("CAPTURED");
     expect(result.journal?.lines).toHaveLength(2);
     expect(ledger.size).toBe(1);
   });
 
-  it("rejects an invalid transition without changing the payment", () => {
+  it("rejects an invalid transition without changing the payment", async () => {
     const { service, payments, ledger } = createInMemoryPaymentCore();
-    service.createPayment(baseCreateCommand);
+    await service.createPayment(baseCreateCommand);
 
-    expect(() => service.transitionPayment(captureCommand({ targetState: "PAID_OUT" }))).toThrow(
+    await expect(service.transitionPayment(captureCommand({ targetState: "PAID_OUT" }))).rejects.toThrow(
       "Transição de pagamento inválida",
     );
-    expect(payments.getById("pay_001")?.state).toBe("CREATED");
+    expect((await payments.getById("pay_001"))?.state).toBe("CREATED");
     expect(ledger.size).toBe(0);
   });
 
-  it("rejects an unbalanced journal before persisting state or ledger", () => {
+  it("rejects an unbalanced journal before persisting state or ledger", async () => {
     const { service, payments, ledger } = createInMemoryPaymentCore();
-    createAuthorizedPayment(service);
+    await createAuthorizedPayment(service);
 
-    expect(() =>
+    await expect(
       service.transitionPayment(
         captureCommand({
           journal: {
@@ -123,28 +123,28 @@ describe("PaymentCoreService", () => {
           },
         }),
       ),
-    ).toThrow("Journal desbalanceado");
+    ).rejects.toThrow("Journal desbalanceado");
 
-    expect(payments.getById("pay_001")?.state).toBe("AUTHORIZED");
+    expect((await payments.getById("pay_001"))?.state).toBe("AUTHORIZED");
     expect(ledger.size).toBe(0);
   });
 
-  it("replays the same idempotent command without duplicating effects", () => {
+  it("replays the same idempotent command without duplicating effects", async () => {
     const { service, ledger, audit } = createInMemoryPaymentCore();
-    createAuthorizedPayment(service);
+    await createAuthorizedPayment(service);
 
-    const first = service.transitionPayment(captureCommand());
-    const second = service.transitionPayment(captureCommand());
+    const first = await service.transitionPayment(captureCommand());
+    const second = await service.transitionPayment(captureCommand());
 
     expect(second).toEqual(first);
     expect(ledger.size).toBe(1);
     expect(audit.size).toBe(3);
   });
 
-  it("does not share an idempotency key between tenants", () => {
+  it("does not share an idempotency key between tenants", async () => {
     const { service, payments } = createInMemoryPaymentCore();
-    service.createPayment(baseCreateCommand);
-    const otherTenant = service.createPayment({
+    await service.createPayment(baseCreateCommand);
+    const otherTenant = await service.createPayment({
       ...baseCreateCommand,
       id: "pay_002",
       tenantId: "tenant_b",
@@ -152,15 +152,15 @@ describe("PaymentCoreService", () => {
     });
 
     expect(otherTenant.payment.tenantId).toBe("tenant_b");
-    expect(payments.getById("pay_002")).toBeDefined();
+    expect(await payments.getById("pay_002")).toBeDefined();
   });
 
-  it("rejects reusing a key with a different payload", () => {
+  it("rejects reusing a key with a different payload", async () => {
     const { service } = createInMemoryPaymentCore();
-    service.createPayment(baseCreateCommand);
+    await service.createPayment(baseCreateCommand);
 
-    expect(() => service.createPayment({ ...baseCreateCommand, amountMinor: 20000 })).toThrow(DomainError);
-    expect(() => service.createPayment({ ...baseCreateCommand, amountMinor: 20000 })).toThrow(
+    await expect(service.createPayment({ ...baseCreateCommand, amountMinor: 20000 })).rejects.toThrow(DomainError);
+    await expect(service.createPayment({ ...baseCreateCommand, amountMinor: 20000 })).rejects.toThrow(
       "payload diferente",
     );
   });

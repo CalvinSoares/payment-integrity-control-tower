@@ -16,7 +16,7 @@ import {
   type Payment,
   type PaymentState,
 } from "../domain/payments/payment.js";
-import type { PaymentCorePorts, PaymentCoreResult } from "./ports.js";
+import type { PaymentCorePorts, PaymentCoreResult, RepositoryPorts } from "./ports.js";
 
 export type CreatePaymentCommand = CreatePaymentInput & {
   actorId: string;
@@ -51,13 +51,19 @@ function scopeOf(command: { tenantId: string; actorId: string; operation: string
   };
 }
 
-function getReplayOrThrow(
-  ports: PaymentCorePorts,
+async function getReplayOrThrow(
+  ports: RepositoryPorts,
   scope: IdempotencyScope,
   fingerprint: string,
-): PaymentCoreResult | undefined {
-  const record = ports.idempotency.get(scope);
+): Promise<PaymentCoreResult | undefined> {
+  const record = await ports.idempotency.get(scope);
   return record ? assertSameIdempotentCommand(record, fingerprint) : undefined;
+}
+
+function expirationFrom(createdAt: string): string {
+  const expiration = new Date(createdAt);
+  expiration.setUTCDate(expiration.getUTCDate() + 7);
+  return expiration.toISOString();
 }
 
 function auditForPayment(input: {
@@ -86,7 +92,7 @@ function auditForPayment(input: {
 export class PaymentCoreService {
   public constructor(private readonly ports: PaymentCorePorts) {}
 
-  public createPayment(command: CreatePaymentCommand): PaymentCoreResult {
+  public async createPayment(command: CreatePaymentCommand): Promise<PaymentCoreResult> {
     const scope = scopeOf({
       tenantId: command.tenantId,
       actorId: command.actorId,
@@ -94,19 +100,19 @@ export class PaymentCoreService {
       idempotencyKey: command.idempotencyKey,
     });
     const fingerprint = fingerprintCommand(command);
-    const replay = getReplayOrThrow(this.ports, scope, fingerprint);
-    if (replay) return replay;
+    return this.ports.transaction.run(async (ports: RepositoryPorts) => {
+      const replay = await getReplayOrThrow(ports, scope, fingerprint);
+      if (replay) return replay;
 
-    const existing = this.ports.payments.getByExternalPaymentId(command.tenantId, command.externalPaymentId);
-    if (existing) {
-      throw new DomainError("payment_already_exists", "Já existe pagamento com esse identificador externo.");
-    }
+      const existing = await ports.payments.getByExternalPaymentId(command.tenantId, command.externalPaymentId);
+      if (existing) {
+        throw new DomainError("payment_already_exists", "Já existe pagamento com esse identificador externo.");
+      }
 
-    const payment = createPayment(command);
-    const result: PaymentCoreResult = { payment, journal: null };
-    this.ports.transaction.run(() => {
-      this.ports.payments.insert(payment);
-      this.ports.audit.append(
+      const payment = createPayment(command);
+      const result: PaymentCoreResult = { payment, journal: null };
+      await ports.payments.insert(payment);
+      await ports.audit.append(
         auditForPayment({
           auditId: `audit:${command.idempotencyKey}`,
           tenantId: command.tenantId,
@@ -117,36 +123,42 @@ export class PaymentCoreService {
           metadata: { state: payment.state, amountMinor: payment.amountMinor, currency: payment.currency },
         }),
       );
-      this.ports.idempotency.save({ ...scope, fingerprint, result, createdAt: command.occurredAt });
+      await ports.idempotency.save({
+        ...scope,
+        fingerprint,
+        result,
+        createdAt: command.occurredAt,
+        expiresAt: expirationFrom(command.occurredAt),
+      });
+      return result;
     });
-    return result;
   }
 
-  public transitionPayment(command: TransitionPaymentCommand): PaymentCoreResult {
+  public async transitionPayment(command: TransitionPaymentCommand): Promise<PaymentCoreResult> {
     const scope = scopeOf(command);
     const fingerprint = fingerprintCommand(command);
-    const replay = getReplayOrThrow(this.ports, scope, fingerprint);
-    if (replay) return replay;
+    return this.ports.transaction.run(async (ports: RepositoryPorts) => {
+      const replay = await getReplayOrThrow(ports, scope, fingerprint);
+      if (replay) return replay;
 
-    const current = this.ports.payments.getById(command.paymentId);
-    if (!current || current.tenantId !== command.tenantId) {
-      throw new DomainError("payment_not_found", "Pagamento não encontrado no tenant informado.");
-    }
+      const current = await ports.payments.getById(command.paymentId);
+      if (!current || current.tenantId !== command.tenantId) {
+        throw new DomainError("payment_not_found", "Pagamento não encontrado no tenant informado.");
+      }
 
-    const payment = transitionPayment(current, command.targetState, command.occurredAt);
-    const journal = command.journal
-      ? createLedgerJournal({
-          ...command.journal,
-          sourceEventId: command.sourceEventId,
-          createdAt: command.occurredAt,
-        })
-      : null;
-    const result: PaymentCoreResult = { payment, journal };
+      const payment = transitionPayment(current, command.targetState, command.occurredAt);
+      const journal = command.journal
+        ? createLedgerJournal({
+            ...command.journal,
+            sourceEventId: command.sourceEventId,
+            createdAt: command.occurredAt,
+          })
+        : null;
+      const result: PaymentCoreResult = { payment, journal };
 
-    this.ports.transaction.run(() => {
-      if (journal) this.ports.ledger.append(journal);
-      this.ports.payments.update(payment);
-      this.ports.audit.append(
+      if (journal) await ports.ledger.append(journal);
+      await ports.payments.update(payment);
+      await ports.audit.append(
         auditForPayment({
           auditId: `audit:${command.idempotencyKey}`,
           tenantId: command.tenantId,
@@ -158,8 +170,14 @@ export class PaymentCoreService {
           metadata: { previousState: current.state, targetState: command.targetState, journalId: journal?.journalId ?? null },
         }),
       );
-      this.ports.idempotency.save({ ...scope, fingerprint, result, createdAt: command.occurredAt });
+      await ports.idempotency.save({
+        ...scope,
+        fingerprint,
+        result,
+        createdAt: command.occurredAt,
+        expiresAt: expirationFrom(command.occurredAt),
+      });
+      return result;
     });
-    return result;
   }
 }
