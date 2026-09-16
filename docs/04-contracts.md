@@ -76,6 +76,10 @@ Transições e estados adicionais devem ser versionados conforme o domínio, sem
 }
 ```
 
+O primeiro formato de settlement aceito é CSV com `settlement_id`, `external_payment_id`, `settled_at`, `gross_amount_minor`, `fee_amount_minor`, `net_amount_minor` e `currency`. Valores financeiros são inteiros em centavos; o arquivo recebe checksum SHA-256 e é deduplicado por provedor, conta, nome, checksum e período.
+
+As categorias iniciais são `MISSING_PAYMENT`, `DUPLICATE_SETTLEMENT`, `AMOUNT_MISMATCH`, `FEE_MISMATCH` e `SETTLEMENT_DELAYED`. Cada exceção preserva evidências e pode gerar um novo run durante o reprocessamento, sem sobrescrever o run original.
+
 ## API de alto nível
 
 - `POST /payments/events`: receber evento canônico/adaptado;
