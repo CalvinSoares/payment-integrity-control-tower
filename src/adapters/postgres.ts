@@ -17,7 +17,7 @@ import type {
 import { PaymentCoreService } from "../application/payment-core.js";
 import { loadEnvironment } from "../config/env.js";
 
-type PostgresExecutor = Pool | PoolClient;
+export type PostgresExecutor = Pool | PoolClient;
 
 type PaymentRow = QueryResultRow & {
   id: string;
