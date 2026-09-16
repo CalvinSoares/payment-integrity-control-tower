@@ -20,9 +20,9 @@
 
 ## Fase 3 — Settlement e conciliação
 
-**Entrega:** upload/ingestão de arquivo, validação, lotes, matching, tolerâncias, exceções e reprocessamento.
+**Entrega:** ingestão CSV, checksum, validação, lotes, matching determinístico, exceções com evidências, persistência PostgreSQL e reprocessamento.
 
-**Aceite:** detectar ausência, duplicidade, valor divergente, taxa incorreta e atraso com evidência reproduzível.
+**Aceite:** detectar ausência, duplicidade, valor divergente, taxa incorreta e atraso com evidência reproduzível, sem alterar o histórico do run anterior.
 
 ## Fase 4 — API e control tower
 

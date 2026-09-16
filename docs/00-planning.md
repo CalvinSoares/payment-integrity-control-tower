@@ -16,6 +16,10 @@ Implementada localmente. O núcleo financeiro possui ports assíncronos, runner 
 
 Implementada localmente. O contrato canônico, inbox/outbox, worker local, simulador e adaptador Axxon foram adicionados com deduplicação, hash de payload, falha persistida e claim concorrente no PostgreSQL. Retry com backoff e integração financeira dentro da mesma transação ficam para as fases de robustez e ingestão de negócio.
 
+## Status da Fase 3
+
+Implementada localmente. O sistema agora ingere CSV de settlement, calcula checksum, deduplica arquivos, persiste lotes, executa matching determinístico, abre exceções com evidências e permite reprocessar uma exceção sem apagar o histórico. Upload HTTP, storage de arquivos e tolerâncias configuráveis ficam para as próximas fases.
+
 ## Regra de commits por tarefa
 
 Todas as fases serão entregues em commits pequenos. Ao terminar cada tarefa, o próximo retorno deve trazer o comando exato para salvar apenas os arquivos daquela tarefa:
