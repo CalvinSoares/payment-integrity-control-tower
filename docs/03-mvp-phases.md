@@ -8,9 +8,9 @@
 
 ## Fase 1 — Domínio e ledger
 
-**Entrega:** estados, comandos, contas contábeis, lançamentos, idempotência, auditoria e testes de invariantes.
+**Entrega:** estados, comandos, contas contábeis, lançamentos, idempotência, auditoria, ports assíncronos, repositories PostgreSQL, transação real e testes de invariantes.
 
-**Aceite:** autorização/captura/estorno/reembolso produzem lançamentos balanceados e replay não altera o saldo.
+**Aceite:** autorização/captura/estorno/reembolso produzem lançamentos balanceados, replay não altera o saldo e falha de uma etapa faz rollback das escritas PostgreSQL.
 
 ## Fase 2 — Eventos e adaptadores
 

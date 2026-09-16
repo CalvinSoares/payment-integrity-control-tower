@@ -8,6 +8,10 @@ O Control Tower será uma camada de integridade entre sistemas de pagamento. Ele
 
 Concluída. A fundação inclui cenário runner, fixtures agnósticas, contrato mínimo de participantes/eventos, dependências instaladas, testes/typecheck passando e PostgreSQL local saudável com a migration inicial aplicada.
 
+## Status da Fase 1
+
+Implementada localmente. O núcleo financeiro possui ports assíncronos, runner transacional PostgreSQL, repositories para pagamentos, ledger, idempotência e auditoria, além de testes unitários e de integração com commit e rollback verificados. A concorrência da mesma chave de idempotência ainda será endurecida na Fase 2.
+
 ## Regra de commits por tarefa
 
 Todas as fases serão entregues em commits pequenos. Ao terminar cada tarefa, o próximo retorno deve trazer o comando exato para salvar apenas os arquivos daquela tarefa:
