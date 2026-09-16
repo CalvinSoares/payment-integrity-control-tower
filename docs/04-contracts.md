@@ -21,6 +21,8 @@
 
 `eventId` identifica a entrada interna; `externalEventId` identifica o fato na origem. A deduplicação deve considerar provedor, conta e identificador externo, com fallback documentado quando a origem não fornece ID.
 
+Na implementação atual, a chave é serializada como JSON para evitar colisões quando um identificador contém `:`. O envelope validado usa `schemaVersion: 1` e `payloadHash` SHA-256 calculado sobre `data` com propriedades ordenadas.
+
 ## Chaves e idempotência
 
 - comandos: chave enviada pelo cliente ou gerada no início da ação;
@@ -30,6 +32,8 @@
 - ajustes: comando único com aprovação e motivo.
 
 Persistir status `RECEIVED`, `PROCESSING`, `APPLIED`, `REJECTED` ou `REPLAYED`. O replay deve devolver o resultado original quando disponível.
+
+O fluxo de entrega local usa outbox com `PENDING`, `PROCESSING`, `PUBLISHED` e `FAILED`. O claim PostgreSQL usa `FOR UPDATE SKIP LOCKED`; retry com backoff e DLQ ficam para a fase de robustez.
 
 ## Ledger
 
