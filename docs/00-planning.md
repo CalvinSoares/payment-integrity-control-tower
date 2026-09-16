@@ -12,6 +12,10 @@ Concluída. A fundação inclui cenário runner, fixtures agnósticas, contrato 
 
 Implementada localmente. O núcleo financeiro possui ports assíncronos, runner transacional PostgreSQL, repositories para pagamentos, ledger, idempotência e auditoria, além de testes unitários e de integração com commit e rollback verificados. A concorrência da mesma chave de idempotência ainda será endurecida na Fase 2.
 
+## Status da Fase 2
+
+Implementada localmente. O contrato canônico, inbox/outbox, worker local, simulador e adaptador Axxon foram adicionados com deduplicação, hash de payload, falha persistida e claim concorrente no PostgreSQL. Retry com backoff e integração financeira dentro da mesma transação ficam para as fases de robustez e ingestão de negócio.
+
 ## Regra de commits por tarefa
 
 Todas as fases serão entregues em commits pequenos. Ao terminar cada tarefa, o próximo retorno deve trazer o comando exato para salvar apenas os arquivos daquela tarefa:

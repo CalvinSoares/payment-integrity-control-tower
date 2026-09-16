@@ -14,9 +14,9 @@
 
 ## Fase 2 — Eventos e adaptadores
 
-**Entrega:** envelope, inbox, outbox, worker local, simulador e contrato de adaptador Axxon.
+**Entrega:** envelope versionado com hash, inbox, outbox, worker local, simulador, contrato de adaptador Axxon e claim concorrente no PostgreSQL.
 
-**Aceite:** o mesmo caso pode ser alimentado pelo simulador ou por um adaptador real sem mudar o domínio.
+**Aceite:** o mesmo caso pode ser alimentado pelo simulador ou por um adaptador real sem mudar o domínio, eventos repetidos não duplicam a mensagem e dois workers não reivindicam o mesmo outbox pendente.
 
 ## Fase 3 — Settlement e conciliação
 
