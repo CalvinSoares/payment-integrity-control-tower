@@ -14,6 +14,8 @@ O projeto pode ser conectado à Axxon, mas o núcleo não conhece Axxon. Cada ad
 - [`docs/02-flow.md`](./docs/02-flow.md): fluxo ponta a ponta e fluxos de exceção.
 - [`docs/03-mvp-phases.md`](./docs/03-mvp-phases.md): entregas incrementais do MVP.
 - [`docs/04-contracts.md`](./docs/04-contracts.md): eventos, idempotência, ledger e APIs.
+- [`docs/07-phase-2-runbook.md`](./docs/07-phase-2-runbook.md): execução e aceite da Fase 2.
+- [`docs/08-phase-3-runbook.md`](./docs/08-phase-3-runbook.md): execução e aceite da Fase 3.
 
 ## Princípio inicial
 
