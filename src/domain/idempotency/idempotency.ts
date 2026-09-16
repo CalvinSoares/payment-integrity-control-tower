@@ -11,6 +11,7 @@ export type IdempotencyRecord<TResult> = IdempotencyScope & {
   fingerprint: string;
   result: TResult;
   createdAt: string;
+  expiresAt: string;
 };
 
 export function idempotencyScopeKey(scope: IdempotencyScope): string {
