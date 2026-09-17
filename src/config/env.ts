@@ -10,6 +10,8 @@ export type Environment = {
   requestTimeoutMs: number;
   maxBodyBytes: number;
   databasePoolMax: number;
+  workerPollMs: number;
+  workerLeaseMs: number;
 };
 
 function positiveInteger(value: string | undefined, fallback: number, field: string): number {
@@ -53,5 +55,7 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
     requestTimeoutMs: positiveInteger(source.CONTROL_TOWER_REQUEST_TIMEOUT_MS, 15_000, "CONTROL_TOWER_REQUEST_TIMEOUT_MS"),
     maxBodyBytes: positiveInteger(source.CONTROL_TOWER_MAX_BODY_BYTES, 2 * 1024 * 1024, "CONTROL_TOWER_MAX_BODY_BYTES"),
     databasePoolMax: positiveInteger(source.CONTROL_TOWER_DB_POOL_MAX, 10, "CONTROL_TOWER_DB_POOL_MAX"),
+    workerPollMs: positiveInteger(source.CONTROL_TOWER_WORKER_POLL_MS, 250, "CONTROL_TOWER_WORKER_POLL_MS"),
+    workerLeaseMs: positiveInteger(source.CONTROL_TOWER_WORKER_LEASE_MS, 5 * 60 * 1000, "CONTROL_TOWER_WORKER_LEASE_MS"),
   };
 }

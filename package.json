@@ -9,6 +9,8 @@
   "scripts": {
     "fixtures": "tsx src/cli/run-scenarios.ts",
     "api": "tsx src/cli/run-api.ts",
+    "worker": "tsx src/cli/run-worker.ts",
+    "db:migrate": "tsx src/cli/run-migrations.ts",
     "test": "vitest run",
     "test:db": "vitest run --no-file-parallelism tests/postgres-adapter.test.ts tests/postgres-events.test.ts tests/postgres-settlement.test.ts tests/postgres-api.test.ts tests/postgres-operations.test.ts",
     "typecheck": "tsc --noEmit"
