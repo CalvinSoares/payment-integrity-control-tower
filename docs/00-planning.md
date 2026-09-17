@@ -20,6 +20,10 @@ Implementada localmente. O contrato canônico, inbox/outbox, worker local, simul
 
 Implementada localmente. O sistema agora ingere CSV de settlement, calcula checksum, deduplica arquivos, persiste lotes, executa matching determinístico, abre exceções com evidências e permite reprocessar uma exceção sem apagar o histórico. Upload HTTP, storage de arquivos e tolerâncias configuráveis ficam para as próximas fases.
 
+## Status da Fase 4
+
+Implementada localmente. A API HTTP autenticada expõe ingestão, conciliação, timeline, ledger, listagem, reprocessamento e resolução de exceções, com isolamento por tenant, escopos de leitura/escrita, limite de payload e teste HTTP integrado ao PostgreSQL.
+
 ## Regra de commits por tarefa
 
 Todas as fases serão entregues em commits pequenos. Ao terminar cada tarefa, o próximo retorno deve trazer o comando exato para salvar apenas os arquivos daquela tarefa:

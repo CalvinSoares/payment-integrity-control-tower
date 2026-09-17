@@ -26,9 +26,9 @@
 
 ## Fase 4 — API e control tower
 
-**Entrega:** timeline, busca por IDs, visão financeira, exceções, filtros por provedor, ações com autorização e exportação.
+**Entrega:** API HTTP autenticada para timeline, busca por IDs, visão financeira, exceções, filtros, reprocessamento e resolução auditada.
 
-**Aceite:** operador explica uma divergência sem consultar manualmente todos os sistemas externos.
+**Aceite:** operador explica uma divergência sem consultar manualmente todos os sistemas externos, e nenhum endpoint retorna dados de outro tenant autenticado.
 
 ## Fase 5 — Operação resiliente
 
