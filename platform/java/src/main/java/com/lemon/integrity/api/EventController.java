@@ -16,10 +16,13 @@ import java.util.*;
 @RequestMapping("/v1")
 public class EventController {
     private final ObjectMapper mapper;
+    private final EventPersistenceService persistence;
     private final String apiToken;
 
-    public EventController(ObjectMapper mapper, @Value("${CONTROL_TOWER_API_TOKEN:local-dev-token}") String apiToken) {
+    public EventController(ObjectMapper mapper, EventPersistenceService persistence,
+                           @Value("${CONTROL_TOWER_API_TOKEN:local-dev-token}") String apiToken) {
         this.mapper = mapper;
+        this.persistence = persistence;
         this.apiToken = apiToken;
     }
 
@@ -42,9 +45,12 @@ public class EventController {
         if (!expectedHash.equals(event.path("payloadHash").asText())) {
             return ResponseEntity.badRequest().body(Map.of("error", "payload_hash_mismatch"));
         }
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-                "status", "RECEIVED",
-                "eventId", event.path("eventId").asText()));
+        try {
+            IngestionReceipt receipt = persistence.receive(event);
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(receipt);
+        } catch (IllegalArgumentException error) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", error.getMessage()));
+        }
     }
 
     private List<String> requiredFields(JsonNode event) {
