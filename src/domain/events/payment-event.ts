@@ -39,8 +39,8 @@ export type PaymentEvent = {
   data: PaymentEventData;
 };
 
-function assertText(value: string, field: string): void {
-  if (value.trim() === "") throw new DomainError("invalid_event", `${field} é obrigatório.`);
+function assertText(value: unknown, field: string): asserts value is string {
+  if (typeof value !== "string" || value.trim() === "") throw new DomainError("invalid_event", `${field} é obrigatório.`);
 }
 
 function assertDate(value: string, field: string): void {
@@ -70,6 +70,9 @@ export function eventDeduplicationKey(event: Pick<PaymentEvent, "provider" | "pr
 }
 
 export function createPaymentEvent(input: PaymentEvent): PaymentEvent {
+  if (!input || typeof input !== "object" || !input.data || typeof input.data !== "object") {
+    throw new DomainError("invalid_event", "data é obrigatório e deve ser um objeto.");
+  }
   assertText(input.eventId, "eventId");
   assertText(input.eventType, "eventType");
   if (!PAYMENT_EVENT_TYPES.includes(input.eventType)) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { EventIngestionService, LocalEventWorker } from "../src/application/event-ingestion.js";
 import { createPostgresEventPipeline } from "../src/adapters/postgres-events.js";
 import { SimulatorEventAdapter } from "../src/adapters/provider-events.js";
@@ -20,10 +20,10 @@ function makeEvent(suffix = randomUUID()) {
       provider: "simulator",
     },
     context: {
-      tenantId: `tenant_${suffix}`,
+      tenantId: `tenant_test_${suffix}`,
       providerAccountId: "simulator_account",
-      paymentId: `pay_${suffix}`,
-      externalPaymentId: `provider_pay_${suffix}`,
+      paymentId: `pay_test_${suffix}`,
+      externalPaymentId: `provider_test_pay_${suffix}`,
       traceId: `trace_${suffix}`,
       receivedAt: occurredAt,
     },
@@ -38,6 +38,11 @@ describe.skipIf(!runDbTests)("Postgres event pipeline", () => {
 
   beforeAll(async () => {
     await pool.query("SELECT 1");
+  });
+
+  beforeEach(async () => {
+    await pool.query("DELETE FROM event_outbox WHERE event_json->'data'->>'paymentId' LIKE 'pay_test_%'");
+    await pool.query("DELETE FROM event_inbox WHERE event_json->'data'->>'paymentId' LIKE 'pay_test_%'");
   });
 
   afterAll(async () => {
