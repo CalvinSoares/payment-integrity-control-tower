@@ -23,6 +23,7 @@ export interface LedgerRepository {
 export interface IdempotencyStore {
   get(scope: IdempotencyScope): Promise<IdempotencyRecord<PaymentCoreResult> | undefined>;
   save(record: IdempotencyRecord<PaymentCoreResult>): Promise<void>;
+  deleteExpired(now: string, limit: number): Promise<number>;
 }
 
 export interface AuditRepository {
