@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 import type { PaymentRepository } from "../application/ports.js";
+import { PostgresAuditRepository } from "./postgres.js";
 import type {
   ExceptionRepository,
   ReconciliationRepository,
@@ -365,6 +366,7 @@ export function createPostgresSettlementRepositoryPorts(db: PostgresExecutor, pa
     reconciliation: new PostgresReconciliationRepository(db),
     exceptions: new PostgresExceptionRepository(db),
     payments,
+    audit: new PostgresAuditRepository(db),
   };
 }
 

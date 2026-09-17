@@ -120,6 +120,16 @@ export class ReconciliationService {
       );
       if (remainsOpen) await ports.exceptions.markOpen(exception.exceptionId);
       else await ports.exceptions.markResolved(exception.exceptionId, command.requestedAt, `Reprocessado por ${command.actorId}.`);
+      await ports.audit.append({
+        auditId: `audit:exception-reprocess:${exception.exceptionId}:${command.requestedAt}`,
+        tenantId: exception.tenantId,
+        actorId: command.actorId,
+        action: "EXCEPTION_REPROCESSED",
+        entityType: "ExceptionCase",
+        entityId: exception.exceptionId,
+        occurredAt: command.requestedAt,
+        metadata: { newRunId: result.run.runId, resolved: !remainsOpen, category: exception.category },
+      });
       return { ...result, resolved: !remainsOpen };
     });
   }

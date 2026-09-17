@@ -1,3 +1,4 @@
+import { InMemoryAuditRepository } from "./in-memory.js";
 import type { PaymentRepository } from "../application/ports.js";
 import type {
   ExceptionRepository,
@@ -107,15 +108,18 @@ export function createInMemorySettlementPipeline(payments: PaymentRepository): {
   settlements: InMemorySettlementBatchRepository;
   reconciliation: InMemoryReconciliationRepository;
   exceptions: InMemoryExceptionRepository;
+  audit: InMemoryAuditRepository;
 } {
   const settlements = new InMemorySettlementBatchRepository();
   const reconciliation = new InMemoryReconciliationRepository();
   const exceptions = new InMemoryExceptionRepository();
-  const ports: SettlementRepositoryPorts = { settlements, reconciliation, exceptions, payments };
+  const audit = new InMemoryAuditRepository();
+  const ports: SettlementRepositoryPorts = { settlements, reconciliation, exceptions, payments, audit };
   return {
     transaction: new InMemorySettlementTransactionRunner(ports),
     settlements,
     reconciliation,
     exceptions,
+    audit,
   };
 }

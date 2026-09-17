@@ -1,4 +1,5 @@
 import type { PaymentRepository } from "./ports.js";
+import type { AuditRepository } from "./ports.js";
 import type { ExceptionCase, ReconciliationItem, ReconciliationRun } from "../domain/reconciliation/reconciliation.js";
 import type { SettlementBatch } from "../domain/settlement/settlement.js";
 
@@ -30,6 +31,7 @@ export type SettlementRepositoryPorts = {
   reconciliation: ReconciliationRepository;
   exceptions: ExceptionRepository;
   payments: PaymentRepository;
+  audit: AuditRepository;
 };
 
 export interface SettlementTransactionRunner {
