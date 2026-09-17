@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payment-integrity.local/contracts/payment-event.v1.schema.json",
+  "title": "Canonical Payment Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "eventType", "schemaVersion", "tenantId", "provider", "providerAccountId", "externalPaymentId", "externalEventId", "occurredAt", "receivedAt", "traceId", "payloadHash", "data"],
+  "properties": {
+    "eventId": { "type": "string", "minLength": 1 },
+    "eventType": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "providerAccountId": { "type": "string", "minLength": 1 },
+    "externalPaymentId": { "type": "string", "minLength": 1 },
+    "externalEventId": { "type": "string", "minLength": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "traceId": { "type": "string", "minLength": 1 },
+    "payloadHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "data": { "type": "object" }
+  }
+}
