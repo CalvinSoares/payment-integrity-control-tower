@@ -1,0 +1,18 @@
+services:
+  spark-runner:
+    image: apache/spark:3.5.3-python3
+    container_name: payment-integrity-spark-runner
+    working_dir: /workspace
+    environment:
+      SPARK_LOCAL_IP: 127.0.0.1
+    volumes:
+      - ./:/workspace
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - "--master"
+      - "local[2]"
+      - "platform/spark/payment_events_job.py"
+      - "--input"
+      - "/workspace/lake/silver/payment_events/events.ndjson"
+      - "--output"
+      - "/workspace/lake/gold/payment_events_spark"
