@@ -25,6 +25,7 @@ type OutboxRow = {
   status: OutboxStatus;
   attempts: number;
   available_at: Date | string;
+  processing_started_at: Date | string | null;
   last_error: string | null;
   published_at: Date | string | null;
 };
@@ -54,6 +55,7 @@ function mapOutbox(row: OutboxRow): OutboxRecord {
     status: row.status,
     attempts: row.attempts,
     availableAt: isoDate(row.available_at),
+    ...(row.processing_started_at === null ? {} : { processingStartedAt: isoDate(row.processing_started_at) }),
     ...(row.last_error === null ? {} : { lastError: row.last_error }),
     ...(row.published_at === null ? {} : { publishedAt: isoDate(row.published_at) }),
   };
@@ -133,6 +135,15 @@ export class PostgresOutboxRepository implements OutboxRepository {
     );
   }
 
+  public async findById(outboxId: string): Promise<OutboxRecord | undefined> {
+    const result = await this.db.query<OutboxRow>(
+      `SELECT outbox_id, event_id, topic, event_json, status, attempts, available_at, processing_started_at, last_error, published_at
+       FROM event_outbox WHERE outbox_id = $1`,
+      [outboxId],
+    );
+    return result.rows[0] ? mapOutbox(result.rows[0]) : undefined;
+  }
+
   public async claimNext(now: string): Promise<OutboxRecord | undefined> {
     const result = await this.db.query<OutboxRow>(
       `WITH next_message AS (
@@ -144,11 +155,11 @@ export class PostgresOutboxRepository implements OutboxRepository {
          LIMIT 1
        )
        UPDATE event_outbox outbox
-       SET status = 'PROCESSING', attempts = outbox.attempts + 1
+       SET status = 'PROCESSING', attempts = outbox.attempts + 1, processing_started_at = $1
        FROM next_message
        WHERE outbox.outbox_id = next_message.outbox_id
        RETURNING outbox.outbox_id, outbox.event_id, outbox.topic, outbox.event_json,
-                 outbox.status, outbox.attempts, outbox.available_at, outbox.last_error, outbox.published_at`,
+                 outbox.status, outbox.attempts, outbox.available_at, outbox.processing_started_at, outbox.last_error, outbox.published_at`,
       [now],
     );
     return result.rows[0] ? mapOutbox(result.rows[0]) : undefined;
@@ -159,11 +170,46 @@ export class PostgresOutboxRepository implements OutboxRepository {
       `UPDATE event_outbox
        SET status = $2,
            last_error = COALESCE($3, last_error),
-           published_at = COALESCE($4, published_at)
+           published_at = COALESCE($4, published_at),
+           processing_started_at = CASE WHEN $2 = 'PROCESSING' THEN processing_started_at ELSE NULL END
        WHERE outbox_id = $1`,
       [outboxId, status, details.error ?? null, details.publishedAt ?? null],
     );
     if (result.rowCount !== 1) throw new Error(`Outbox ausente: ${outboxId}`);
+  }
+
+  public async scheduleRetry(outboxId: string, availableAt: string, error: string, deadLetter: boolean): Promise<void> {
+    const result = await this.db.query(
+      `UPDATE event_outbox
+       SET status = CASE WHEN $4 THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+           available_at = $2,
+           last_error = $3,
+           processing_started_at = NULL
+       WHERE outbox_id = $1`,
+      [outboxId, availableAt, error, deadLetter],
+    );
+    if (result.rowCount !== 1) throw new Error(`Outbox ausente: ${outboxId}`);
+  }
+
+  public async requeueDeadLetter(outboxId: string, availableAt: string): Promise<void> {
+    const result = await this.db.query(
+      `UPDATE event_outbox
+       SET status = 'PENDING', attempts = 0, available_at = $2, processing_started_at = NULL
+       WHERE outbox_id = $1 AND status = 'DEAD_LETTER'`,
+      [outboxId, availableAt],
+    );
+    if (result.rowCount !== 1) throw new Error(`Outbox não está na DLQ: ${outboxId}`);
+  }
+
+  public async recoverStaleProcessing(now: string, leaseMs: number): Promise<number> {
+    const result = await this.db.query(
+      `UPDATE event_outbox
+       SET status = 'PENDING', available_at = $1, processing_started_at = NULL,
+           last_error = 'Lease de processamento expirado.'
+       WHERE status = 'PROCESSING' AND processing_started_at <= ($1::timestamptz - ($2::text || ' milliseconds')::interval)`,
+      [now, leaseMs],
+    );
+    return result.rowCount ?? 0;
   }
 }
 

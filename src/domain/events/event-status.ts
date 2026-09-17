@@ -1,7 +1,7 @@
 import type { PaymentEvent } from "./payment-event.js";
 
 export type InboxStatus = "RECEIVED" | "PROCESSING" | "APPLIED" | "REJECTED";
-export type OutboxStatus = "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED";
+export type OutboxStatus = "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED" | "DEAD_LETTER";
 
 export type InboxRecord = {
   inboxId: string;
@@ -21,6 +21,7 @@ export type OutboxRecord = {
   status: OutboxStatus;
   attempts: number;
   availableAt: string;
+  processingStartedAt?: string;
   lastError?: string;
   publishedAt?: string;
 };

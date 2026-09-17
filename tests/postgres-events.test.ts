@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { EventIngestionService, LocalEventWorker } from "../src/application/event-ingestion.js";
+import { DeadLetterService } from "../src/application/dead-letter.js";
 import { createPostgresEventPipeline } from "../src/adapters/postgres-events.js";
 import { SimulatorEventAdapter } from "../src/adapters/provider-events.js";
 import { loadEnvironment } from "../src/config/env.js";
@@ -35,6 +36,7 @@ describe.skipIf(!runDbTests)("Postgres event pipeline", () => {
   const { transaction } = createPostgresEventPipeline(pool);
   const ingestion = new EventIngestionService(transaction);
   const worker = new LocalEventWorker(transaction);
+  const deadLetters = new DeadLetterService(transaction);
 
   beforeAll(async () => {
     await pool.query("SELECT 1");
@@ -105,9 +107,15 @@ describe.skipIf(!runDbTests)("Postgres event pipeline", () => {
   it("marks a handler failure as rejected and failed", async () => {
     const event = makeEvent();
     await ingestion.receive(event);
-    const result = await worker.processNext(async () => {
+    const first = await worker.processNext(async () => {
       throw new Error("falha persistida");
     });
+    const second = await worker.processNext(async () => {
+      throw new Error("falha persistida");
+    }, first.nextAttemptAt);
+    const result = await worker.processNext(async () => {
+      throw new Error("falha persistida");
+    }, second.nextAttemptAt);
     const statuses = await pool.query<{ inbox_status: string; outbox_status: string; last_error: string }>(
       `SELECT i.status AS inbox_status, o.status AS outbox_status, i.last_error
        FROM event_inbox i
@@ -116,11 +124,25 @@ describe.skipIf(!runDbTests)("Postgres event pipeline", () => {
       [event.eventId],
     );
 
-    expect(result).toEqual({ status: "REJECTED", eventId: event.eventId, error: "falha persistida" });
+    expect(result).toMatchObject({ status: "REJECTED", eventId: event.eventId, error: "falha persistida", attempts: 3 });
     expect(statuses.rows[0]).toMatchObject({
       inbox_status: "REJECTED",
-      outbox_status: "FAILED",
+      outbox_status: "DEAD_LETTER",
       last_error: "falha persistida",
     });
+  });
+
+  it("requeues a dead-letter event and applies it after operator replay", async () => {
+    const event = makeEvent();
+    await ingestion.receive(event);
+    const first = await worker.processNext(async () => { throw new Error("falha persistida"); });
+    const second = await worker.processNext(async () => { throw new Error("falha persistida"); }, first.nextAttemptAt);
+    await worker.processNext(async () => { throw new Error("falha persistida"); }, second.nextAttemptAt);
+
+    const replay = await deadLetters.requeue({ outboxId: `outbox:${event.eventId}`, tenantId: event.tenantId });
+    const applied = await worker.processNext(async () => undefined, replay.availableAt);
+
+    expect(replay.status).toBe("REQUEUED");
+    expect(applied).toEqual({ status: "APPLIED", eventId: event.eventId });
   });
 });

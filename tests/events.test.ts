@@ -148,7 +148,45 @@ describe("event ingestion and local worker", () => {
       throw new Error("falha controlada");
     }, "2026-01-10T10:02:00Z");
 
-    expect(result).toEqual({ status: "REJECTED", eventId: event.eventId, error: "falha controlada" });
-    expect(outbox.getById(`outbox:${event.eventId}`)?.status).toBe("FAILED");
+    expect(result.status).toBe("RETRY_SCHEDULED");
+    expect(result.nextAttemptAt).toBe("2026-01-10T10:02:01.000Z");
+    expect(outbox.getById(`outbox:${event.eventId}`)?.status).toBe("PENDING");
+  });
+
+  it("retries with backoff and applies when the handler recovers", async () => {
+    const { transaction, outbox } = createInMemoryEventPipeline();
+    const ingestion = new EventIngestionService(transaction);
+    const worker = new LocalEventWorker(transaction);
+    const event = paymentEvent({ eventId: "evt:simulator:evt-retry-001", externalEventId: "evt-retry-001" });
+    await ingestion.receive(event);
+    let attempts = 0;
+
+    const first = await worker.processNext(async () => {
+      attempts += 1;
+      throw new Error("transient");
+    }, "2026-01-10T10:02:00Z");
+    const second = await worker.processNext(async () => {
+      attempts += 1;
+    }, first.nextAttemptAt);
+
+    expect(first.status).toBe("RETRY_SCHEDULED");
+    expect(second.status).toBe("APPLIED");
+    expect(attempts).toBe(2);
+    expect(outbox.getById(`outbox:${event.eventId}`)?.status).toBe("PUBLISHED");
+  });
+
+  it("moves an event to the dead-letter queue after the retry budget", async () => {
+    const { transaction, outbox } = createInMemoryEventPipeline();
+    const ingestion = new EventIngestionService(transaction);
+    const worker = new LocalEventWorker(transaction);
+    const event = paymentEvent({ eventId: "evt:simulator:evt-dlq-001", externalEventId: "evt-dlq-001" });
+    await ingestion.receive(event);
+    const first = await worker.processNext(async () => { throw new Error("permanent"); }, "2026-01-10T10:02:00Z");
+    const second = await worker.processNext(async () => { throw new Error("permanent"); }, first.nextAttemptAt);
+    const third = await worker.processNext(async () => { throw new Error("permanent"); }, second.nextAttemptAt);
+
+    expect(third.status).toBe("REJECTED");
+    expect(third.attempts).toBe(3);
+    expect(outbox.getById(`outbox:${event.eventId}`)?.status).toBe("DEAD_LETTER");
   });
 });

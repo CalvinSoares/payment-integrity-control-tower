@@ -8,8 +8,12 @@ export interface InboxRepository {
 
 export interface OutboxRepository {
   enqueue(record: OutboxRecord): Promise<void>;
+  findById(outboxId: string): Promise<OutboxRecord | undefined>;
   claimNext(now: string): Promise<OutboxRecord | undefined>;
   markStatus(outboxId: string, status: OutboxStatus, details?: { error?: string; publishedAt?: string }): Promise<void>;
+  scheduleRetry(outboxId: string, availableAt: string, error: string, deadLetter: boolean): Promise<void>;
+  requeueDeadLetter(outboxId: string, availableAt: string): Promise<void>;
+  recoverStaleProcessing(now: string, leaseMs: number): Promise<number>;
 }
 
 export type EventRepositoryPorts = {
