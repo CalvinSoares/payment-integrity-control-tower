@@ -4,6 +4,9 @@ export type Environment = {
   databaseUrl: string;
   defaultCurrency: string;
   logLevel: string;
+  apiToken: string;
+  apiTenantId: string;
+  apiActorId: string;
 };
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -21,11 +24,19 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
     throw new Error(`NODE_ENV inválido: ${nodeEnv}`);
   }
 
+  const apiToken = source.CONTROL_TOWER_API_TOKEN ?? (nodeEnv === "production" ? "" : "local-dev-token");
+  if (nodeEnv === "production" && apiToken.trim() === "") {
+    throw new Error("CONTROL_TOWER_API_TOKEN é obrigatório em produção.");
+  }
+
   return {
     nodeEnv,
-    port: positiveInteger(source.PORT, 4100),
+    port: positiveInteger(source.CONTROL_TOWER_API_PORT ?? source.PORT, 4100),
     databaseUrl: source.DATABASE_URL ?? "postgresql://integrity:integrity_dev@localhost:5438/payment_integrity",
     defaultCurrency: source.DEFAULT_CURRENCY ?? "BRL",
     logLevel: source.APP_LOG_LEVEL ?? "info",
+    apiToken,
+    apiTenantId: source.CONTROL_TOWER_API_TENANT_ID ?? "tenant_local",
+    apiActorId: source.CONTROL_TOWER_API_ACTOR_ID ?? "operator_local",
   };
 }
