@@ -51,7 +51,7 @@ services:
       dockerfile: Dockerfile.python
     container_name: payment-integrity-worker-python
     restart: unless-stopped
-    command: ["python", "-m", "data_platform.python.run_worker"]
+    command: ["python", "-m", "payment_integrity.worker.run_worker"]
     environment:
       CONTROL_TOWER_WORKER_ACTOR_ID: ${CONTROL_TOWER_WORKER_ACTOR_ID:-system:processor}
       CONTROL_TOWER_WORKER_POLL_MS: ${CONTROL_TOWER_WORKER_POLL_MS:-250}
