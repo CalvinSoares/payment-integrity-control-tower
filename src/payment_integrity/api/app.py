@@ -14,12 +14,19 @@ from payment_integrity.application.query_ports import ControlTowerQueries
 from payment_integrity.application.settlement_ports import SettlementService
 from payment_integrity.domain.payment_events import PaymentEventValidationError
 from payment_integrity.domain.settlements import SettlementError, SettlementNotFound
-from payment_integrity.infrastructure.postgres_event_store import EventConflict, PostgresEventStore
+from payment_integrity.infrastructure.postgres_event_store import (
+    EventConflict,
+    EventNotFound,
+    EventReplayConflict,
+    EventTenantConflict,
+    PostgresEventStore,
+)
 from payment_integrity.infrastructure.postgres_queries import PostgresControlTowerQueries
 from payment_integrity.infrastructure.postgres_settlement import PostgresSettlementService
 
 from .metrics import MetricsRegistry
 from .models import (
+    DeadLetterReplayRequest,
     ExceptionReprocessRequest,
     ExceptionResolutionRequest,
     IngestionReceiptResponse,
@@ -107,6 +114,21 @@ def create_app(
         try:
             return IngestionReceiptResponse.from_domain(ingest.execute(domain_event.to_mapping()))
         except EventConflict as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @app.post("/v1/events/dead-letter/{outbox_id}/replay", status_code=status.HTTP_202_ACCEPTED)
+    def replay_dead_letter(
+        outbox_id: str,
+        body: DeadLetterReplayRequest | None = None,
+        authenticated_tenant: str = Depends(require_scope("control_tower:write")),
+    ) -> dict[str, str]:
+        try:
+            return store.requeue_dead_letter(outbox_id, authenticated_tenant, None if body is None else body.availableAt)
+        except EventNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+        except EventTenantConflict as error:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error
+        except EventReplayConflict as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     @app.get("/v1/payments/{payment_id}/timeline")

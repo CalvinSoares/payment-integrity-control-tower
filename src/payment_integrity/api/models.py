@@ -75,3 +75,9 @@ class ExceptionReprocessRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requestedAt: str
+
+
+class DeadLetterReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    availableAt: str | None = None

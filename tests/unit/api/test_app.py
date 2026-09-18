@@ -21,6 +21,9 @@ class FakeEventStore:
     def ready(self) -> bool:
         return True
 
+    def requeue_dead_letter(self, outbox_id: str, tenant_id: str, available_at: str | None = None) -> dict[str, str]:
+        return {"status": "REQUEUED", "outboxId": outbox_id, "tenantId": tenant_id, "availableAt": available_at or "now"}
+
 
 class FakeQueries:
     def get_payment_timeline(self, payment_id: str, tenant_id: str) -> dict[str, object]:
@@ -100,6 +103,19 @@ class NewApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["status"], "RECEIVED")
         self.assertEqual([event.event_id for event in store.received], ["evt:python:new-api"])
+
+    def test_replays_dead_letter_through_event_store_port(self) -> None:
+        client = TestClient(create_app(FakeEventStore(), settings=settings()))
+
+        response = client.post(
+            "/v1/events/dead-letter/outbox_1/replay",
+            headers={"Authorization": "Bearer test-token"},
+            json={"availableAt": "2026-09-18T10:00:00Z"},
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "REQUEUED")
+        self.assertEqual(response.json()["outboxId"], "outbox_1")
 
     def test_rejects_another_tenant_before_persistence(self) -> None:
         store = FakeEventStore()
