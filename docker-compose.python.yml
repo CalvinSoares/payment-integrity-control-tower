@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile.python
     container_name: payment-integrity-api-python
     restart: unless-stopped
-    command: ["python", "-m", "data_platform.python.api.run_api"]
+    command: ["python", "-m", "payment_integrity.api.run_api"]
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       CONTROL_TOWER_API_HOST: 0.0.0.0
