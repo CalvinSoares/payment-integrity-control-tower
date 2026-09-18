@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: payment-integrity-postgres-python
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-payment_integrity}
+      POSTGRES_USER: ${POSTGRES_USER:-integrity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-integrity_dev}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5439}:5432"
+    volumes:
+      - integrity-postgres-python-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-integrity} -d $${POSTGRES_DB:-payment_integrity}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: payment-integrity-api-python
+    restart: unless-stopped
+    command: ["python", "-m", "data_platform.python.api.run_api"]
+    environment:
+      CONTROL_TOWER_API_HOST: 0.0.0.0
+      CONTROL_TOWER_PYTHON_API_PORT: 4200
+      CONTROL_TOWER_API_TOKEN: ${CONTROL_TOWER_API_TOKEN:-local-dev-token}
+      CONTROL_TOWER_API_TENANT_ID: ${CONTROL_TOWER_API_TENANT_ID:-tenant_local}
+      CONTROL_TOWER_API_ACTOR_ID: ${CONTROL_TOWER_API_ACTOR_ID:-system:ingestion}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-integrity}:${POSTGRES_PASSWORD:-integrity_dev}@postgres:5432/${POSTGRES_DB:-payment_integrity}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4200:4200"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/v1/health/live', timeout=2)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: payment-integrity-worker-python
+    restart: unless-stopped
+    command: ["python", "-m", "data_platform.python.run_worker"]
+    environment:
+      CONTROL_TOWER_WORKER_ACTOR_ID: ${CONTROL_TOWER_WORKER_ACTOR_ID:-system:processor}
+      CONTROL_TOWER_WORKER_POLL_MS: ${CONTROL_TOWER_WORKER_POLL_MS:-250}
+      CONTROL_TOWER_WORKER_MAX_ATTEMPTS: ${CONTROL_TOWER_WORKER_MAX_ATTEMPTS:-3}
+      CONTROL_TOWER_WORKER_BASE_DELAY_MS: ${CONTROL_TOWER_WORKER_BASE_DELAY_MS:-1000}
+      CONTROL_TOWER_WORKER_MAX_DELAY_MS: ${CONTROL_TOWER_WORKER_MAX_DELAY_MS:-60000}
+      CONTROL_TOWER_WORKER_LEASE_MS: ${CONTROL_TOWER_WORKER_LEASE_MS:-300000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-integrity}:${POSTGRES_PASSWORD:-integrity_dev}@postgres:5432/${POSTGRES_DB:-payment_integrity}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  integrity-postgres-python-data:
