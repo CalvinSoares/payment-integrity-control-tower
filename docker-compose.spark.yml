@@ -11,7 +11,7 @@ services:
     command:
       - "--master"
       - "local[2]"
-      - "platform/spark/payment_events_job.py"
+      - "data_platform/spark/payment_events_job.py"
       - "--input"
       - "/workspace/lake/silver/payment_events/events.ndjson"
       - "--output"
