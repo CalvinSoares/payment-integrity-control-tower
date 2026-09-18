@@ -13,3 +13,4 @@ runtime/
 *.md
 !AGENTS.md
 !SKILL.md
+!/README.md
