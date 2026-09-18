@@ -18,6 +18,9 @@ class EventStore(Protocol):
     def receive(self, event: PaymentEvent) -> IngestionReceipt:
         """Persist or replay an event using its deduplication identity."""
 
+    def ready(self) -> bool:
+        """Return whether the event store is ready for requests."""
+
 
 class EventHealthCheck(Protocol):
     """Minimal health port used by the API composition root."""
