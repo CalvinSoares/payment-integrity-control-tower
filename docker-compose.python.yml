@@ -26,11 +26,13 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "data_platform.python.api.run_api"]
     environment:
+      NODE_ENV: ${NODE_ENV:-development}
       CONTROL_TOWER_API_HOST: 0.0.0.0
       CONTROL_TOWER_PYTHON_API_PORT: 4200
       CONTROL_TOWER_API_TOKEN: ${CONTROL_TOWER_API_TOKEN:-local-dev-token}
       CONTROL_TOWER_API_TENANT_ID: ${CONTROL_TOWER_API_TENANT_ID:-tenant_local}
       CONTROL_TOWER_API_ACTOR_ID: ${CONTROL_TOWER_API_ACTOR_ID:-operator_local}
+      CONTROL_TOWER_API_SCOPES: ${CONTROL_TOWER_API_SCOPES:-control_tower:read,control_tower:write}
       DATABASE_URL: postgresql://${POSTGRES_USER:-integrity}:${POSTGRES_PASSWORD:-integrity_dev}@postgres:5432/${POSTGRES_DB:-payment_integrity}
     depends_on:
       postgres:
