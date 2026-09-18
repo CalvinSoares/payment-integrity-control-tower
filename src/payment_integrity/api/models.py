@@ -40,3 +40,38 @@ class IngestionReceiptResponse(BaseModel):
     @classmethod
     def from_domain(cls, receipt: IngestionReceipt) -> "IngestionReceiptResponse":
         return cls(**receipt.to_mapping())
+
+
+class SettlementImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    providerAccountId: str
+    fileName: str
+    periodStart: str
+    periodEnd: str
+    receivedAt: str
+    content: str
+
+
+class ReconciliationRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batchId: str
+    ruleVersion: str
+    idempotencyKey: str
+    requestedAt: str
+
+
+class ExceptionResolutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    evidence: list[str]
+    resolvedAt: str
+
+
+class ExceptionReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requestedAt: str
