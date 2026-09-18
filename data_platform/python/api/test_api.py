@@ -83,3 +83,16 @@ class PythonApiTest(unittest.TestCase):
         metrics = client.get("/v1/metrics")
         self.assertEqual(metrics.status_code, 200)
         self.assertIn("http_requests_total", metrics.text)
+
+    def test_enforces_read_and_write_scopes(self):
+        read_client = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api", scopes={"control_tower:read"}))
+        headers = {"Authorization": "Bearer test-token"}
+        self.assertEqual(read_client.get("/v1/health/live").status_code, 200)
+        self.assertEqual(read_client.post("/v1/events", headers=headers, json=valid_event()).status_code, 403)
+
+    def test_returns_contract_error_for_invalid_credentials(self):
+        response = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api")).get(
+            "/v1/payments/pay_api/timeline", headers={"Authorization": "Bearer wrong-token"}
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["code"], "unauthorized")
