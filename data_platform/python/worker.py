@@ -10,6 +10,7 @@ from typing import Any, Callable
 import psycopg
 
 from .api.models import PaymentEvent
+from .analytics_projection import EventAnalyticsProjector
 
 
 logger = logging.getLogger("payment-integrity.worker")
@@ -39,6 +40,7 @@ class PostgresEventWorker:
         base_delay_ms: int = 1_000,
         max_delay_ms: int = 60_000,
         lease_ms: int = 5 * 60 * 1_000,
+        projector: EventAnalyticsProjector | None = None,
     ) -> None:
         if max_attempts <= 0:
             raise ValueError("max_attempts deve ser positivo")
@@ -50,6 +52,7 @@ class PostgresEventWorker:
         self.base_delay_ms = base_delay_ms
         self.max_delay_ms = max_delay_ms
         self.lease_ms = lease_ms
+        self.projector = projector
 
     @staticmethod
     def log_event(event: PaymentEvent, _connection: psycopg.Connection[Any]) -> None:
@@ -63,6 +66,7 @@ class PostgresEventWorker:
     def process_next(self, now: datetime | None = None) -> WorkerResult:
         current_time = now or datetime.now(timezone.utc)
         now_iso = current_time.isoformat()
+        projected_event: PaymentEvent | None = None
         with psycopg.connect(self.database_url) as connection:
             with connection.transaction():
                 self._recover_stale_processing(connection, now_iso)
@@ -88,7 +92,14 @@ class PostgresEventWorker:
                 processed_at = datetime.now(timezone.utc).isoformat()
                 self._mark_inbox_applied(connection, inbox_id, processed_at)
                 self._mark_outbox_published(connection, outbox_id, processed_at)
-                return WorkerResult(status="APPLIED", event_id=event_id, attempts=attempts)
+                projected_event = event
+                result = WorkerResult(status="APPLIED", event_id=event_id, attempts=attempts)
+        if projected_event is not None and self.projector is not None:
+            try:
+                self.projector.project(projected_event)
+            except Exception:  # noqa: BLE001 - projeção é derivada e não pode desfazer o financeiro
+                logger.exception("analytics_projection_failed event_id=%s", projected_event.eventId)
+        return result
 
     def run_forever(self, poll_ms: int = 250, stop_requested: Callable[[], bool] | None = None) -> None:
         if poll_ms < 0:

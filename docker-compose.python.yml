@@ -30,7 +30,7 @@ services:
       CONTROL_TOWER_PYTHON_API_PORT: 4200
       CONTROL_TOWER_API_TOKEN: ${CONTROL_TOWER_API_TOKEN:-local-dev-token}
       CONTROL_TOWER_API_TENANT_ID: ${CONTROL_TOWER_API_TENANT_ID:-tenant_local}
-      CONTROL_TOWER_API_ACTOR_ID: ${CONTROL_TOWER_API_ACTOR_ID:-system:ingestion}
+      CONTROL_TOWER_API_ACTOR_ID: ${CONTROL_TOWER_API_ACTOR_ID:-operator_local}
       DATABASE_URL: postgresql://${POSTGRES_USER:-integrity}:${POSTGRES_PASSWORD:-integrity_dev}@postgres:5432/${POSTGRES_DB:-payment_integrity}
     depends_on:
       postgres:
@@ -58,9 +58,40 @@ services:
       CONTROL_TOWER_WORKER_MAX_DELAY_MS: ${CONTROL_TOWER_WORKER_MAX_DELAY_MS:-60000}
       CONTROL_TOWER_WORKER_LEASE_MS: ${CONTROL_TOWER_WORKER_LEASE_MS:-300000}
       DATABASE_URL: postgresql://${POSTGRES_USER:-integrity}:${POSTGRES_PASSWORD:-integrity_dev}@postgres:5432/${POSTGRES_DB:-payment_integrity}
+      ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-true}
+      ANALYTICS_LAKE_ROOT: /app/runtime/lake
+      ANALYTICS_WAREHOUSE_PATH: /app/runtime/warehouse/payment_integrity.duckdb
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin_dev}
+      MINIO_BUCKET: ${MINIO_BUCKET:-payment-integrity}
+      MINIO_OBJECT_NAME: ${MINIO_OBJECT_NAME:-silver/payment_events/events.parquet}
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./runtime:/app/runtime
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: payment-integrity-minio-python
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_dev}
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - integrity-minio-python-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   integrity-postgres-python-data:
+  integrity-minio-python-data:

@@ -8,6 +8,7 @@ coverage/
 .DS_Store
 __pycache__/
 *.py[cod]
+runtime/
 # Documentacao local e runbooks; manter AGENTS.md e SKILL.md versionados.
 *.md
 !AGENTS.md
