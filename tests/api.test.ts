@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApiServer, type ApiDependencies } from "../src/api/server.js";
 import { BearerTokenAuthenticator } from "../src/api/auth.js";
 import { hashEventData, type PaymentEvent } from "../src/domain/events/payment-event.js";
+import { MetricsRegistry } from "../src/observability/metrics.js";
 
 function event(): PaymentEvent {
   const data = { paymentId: "pay_api", externalPaymentId: "external_api", amountMinor: 10000, currency: "BRL" };
@@ -23,7 +24,7 @@ function event(): PaymentEvent {
   };
 }
 
-function httpCall(port: number, method: string, path: string, body?: unknown, token?: string): Promise<{ status: number; body: Record<string, unknown> }> {
+function httpCall(port: number, method: string, path: string, body?: unknown, token?: string): Promise<{ status: number; body: Record<string, unknown>; raw: string }> {
   return new Promise((resolve, reject) => {
     const serialized = body === undefined ? undefined : JSON.stringify(body);
     const req = request({
@@ -37,7 +38,12 @@ function httpCall(port: number, method: string, path: string, body?: unknown, to
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
-      response.on("end", () => resolve({ status: response.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown> }));
+      response.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let parsed: Record<string, unknown> = {};
+        try { parsed = JSON.parse(raw) as Record<string, unknown>; } catch { /* plain text endpoint */ }
+        resolve({ status: response.statusCode ?? 0, body: parsed, raw });
+      });
     });
     req.on("error", reject);
     if (serialized !== undefined) req.write(serialized);
@@ -49,7 +55,9 @@ describe("Control Tower API", () => {
   let port: number;
   let close: () => Promise<void>;
   let capturedTenant: string | undefined;
+  let replayTenant: string | undefined;
   let exceptionQuery: { limit?: number } | undefined;
+  const metrics = new MetricsRegistry();
   const timeline = {
     payment: {
       id: "pay_api",
@@ -70,6 +78,7 @@ describe("Control Tower API", () => {
   const dependencies: ApiDependencies = {
     authenticator: new BearerTokenAuthenticator("test-token", { tenantId: "tenant_a", actorId: "actor_a", scopes: ["control_tower:read", "control_tower:write"] }),
     eventIngestion: { receive: async (received) => { capturedTenant = received.tenantId; return { status: "RECEIVED", eventId: received.eventId, inboxId: "inbox", outboxId: "outbox" }; } },
+    deadLetters: { requeue: async (input) => { replayTenant = input.tenantId; return { status: "REQUEUED", outboxId: input.outboxId, eventId: "evt:replay", deduplicationKey: "dedup", availableAt: input.availableAt ?? "now" }; } },
     settlementIngestion: { receiveCsv: async () => ({ status: "RECEIVED", batchId: "batch_api", rowCount: 1 }) },
     reconciliation: {
       reconcile: async () => ({ run: {} as never, items: [], exceptions: [] }),
@@ -81,6 +90,8 @@ describe("Control Tower API", () => {
       getPaymentLedger: async () => [],
       listExceptions: async (_tenantId, filters) => { exceptionQuery = filters; return []; },
     },
+    health: { readiness: async () => ({ status: "ok", checks: { postgres: "ok" } }) },
+    metrics,
   };
 
   beforeAll(async () => {
@@ -99,6 +110,17 @@ describe("Control Tower API", () => {
     expect(response.status).toBe(401);
   });
 
+  it("keeps liveness public, checks readiness and exposes counters", async () => {
+    const live = await httpCall(port, "GET", "/health/live");
+    const ready = await httpCall(port, "GET", "/health/ready");
+    const prometheus = await httpCall(port, "GET", "/metrics");
+    expect(live.status).toBe(200);
+    expect(ready.status).toBe(200);
+    expect(prometheus.status).toBe(200);
+    expect(metrics.snapshot().http_requests_total).toBeGreaterThanOrEqual(3);
+    expect(prometheus.raw).toContain("http_requests_total");
+  });
+
   it("returns bad request for a malformed event body", async () => {
     const response = await httpCall(port, "POST", "/payments/events", { eventId: "missing-data" }, "test-token");
     expect(response.status).toBe(400);
@@ -108,6 +130,12 @@ describe("Control Tower API", () => {
     const response = await httpCall(port, "POST", "/payments/events", event(), "test-token");
     expect(response.status).toBe(202);
     expect(capturedTenant).toBe("tenant_a");
+  });
+
+  it("replays a dead-letter event only through the authenticated tenant", async () => {
+    const response = await httpCall(port, "POST", "/events/dead-letter/outbox%3Aevt-001/replay", {}, "test-token");
+    expect(response.status).toBe(202);
+    expect(replayTenant).toBe("tenant_a");
   });
 
   it("blocks an event forged for another tenant", async () => {

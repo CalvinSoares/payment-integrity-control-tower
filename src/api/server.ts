@@ -4,18 +4,26 @@ import { createPaymentEvent } from "../domain/events/payment-event.js";
 import type { ExceptionFilters } from "../application/control-tower.js";
 import type { ExceptionOperationsService } from "../application/exception-operations.js";
 import type { EventIngestionService } from "../application/event-ingestion.js";
+import type { DeadLetterService } from "../application/dead-letter.js";
 import type { ReconciliationService, SettlementIngestionService } from "../application/settlement.js";
 import type { ControlTowerQueries } from "../application/control-tower.js";
 import type { Authenticator, AuthPrincipal } from "./auth.js";
+import type { HealthChecker } from "./health.js";
+import { MetricsRegistry } from "../observability/metrics.js";
+import { consoleLogger, type StructuredLogger } from "../observability/logger.js";
 
 export type ApiDependencies = {
   authenticator: Authenticator;
   eventIngestion: Pick<EventIngestionService, "receive">;
+  deadLetters?: Pick<DeadLetterService, "requeue">;
   settlementIngestion: Pick<SettlementIngestionService, "receiveCsv">;
   reconciliation: Pick<ReconciliationService, "reconcile" | "reprocessException">;
   exceptions: Pick<ExceptionOperationsService, "resolve">;
   queries: ControlTowerQueries;
   maxBodyBytes?: number;
+  health?: HealthChecker;
+  metrics?: MetricsRegistry;
+  logger?: StructuredLogger;
 };
 
 class ApiError extends Error {
@@ -73,6 +81,7 @@ function requireScope(principal: AuthPrincipal, scope: string): void {
 }
 
 function domainStatus(code: string): number {
+  if (code.includes("forbidden")) return 403;
   if (code.endsWith("_not_found")) return 404;
   if (code.includes("conflict") || code.includes("already_exists")) return 409;
   return 400;
@@ -91,6 +100,21 @@ function errorResponse(error: unknown): { statusCode: number; body: { error: str
 async function route(request: IncomingMessage, response: ServerResponse, dependencies: ApiDependencies): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
   const pathname = url.pathname;
+  if (request.method === "GET" && pathname === "/health/live") {
+    json(response, 200, { status: "ok" });
+    return;
+  }
+  if (request.method === "GET" && pathname === "/health/ready") {
+    const result = dependencies.health ? await dependencies.health.readiness() : { status: "degraded" as const, checks: { health_checker: "failed" as const } };
+    json(response, result.status === "ok" ? 200 : 503, result);
+    return;
+  }
+  if (request.method === "GET" && pathname === "/metrics") {
+    response.statusCode = 200;
+    response.setHeader("content-type", "text/plain; version=0.0.4; charset=utf-8");
+    response.end((dependencies.metrics ?? new MetricsRegistry()).toPrometheus() + "\n");
+    return;
+  }
   const principal = await dependencies.authenticator.authenticate(request);
   requireScope(principal, request.method === "GET" ? "control_tower:read" : "control_tower:write");
   const maxBodyBytes = dependencies.maxBodyBytes ?? 2 * 1024 * 1024;
@@ -100,6 +124,17 @@ async function route(request: IncomingMessage, response: ServerResponse, depende
     const event = createPaymentEvent(body as never);
     principalTenant(principal, event.tenantId);
     json(response, 202, await dependencies.eventIngestion.receive(event));
+    return;
+  }
+  const deadLetterReplay = pathname.match(/^\/events\/dead-letter\/([^/]+)\/replay$/);
+  if (request.method === "POST" && deadLetterReplay) {
+    if (!dependencies.deadLetters) throw new ApiError(503, "Replay da DLQ não está configurado.", "dead_letter_unavailable");
+    const body = await readJson(request, maxBodyBytes);
+    json(response, 202, await dependencies.deadLetters.requeue({
+      outboxId: decodeURIComponent(deadLetterReplay[1] ?? ""),
+      tenantId: principal.tenantId,
+      ...(body.availableAt === undefined ? {} : { availableAt: stringField(body, "availableAt") }),
+    }));
     return;
   }
   if (request.method === "POST" && pathname === "/settlements/imports") {
@@ -184,12 +219,19 @@ async function route(request: IncomingMessage, response: ServerResponse, depende
 }
 
 export function createApiServer(dependencies: ApiDependencies): Server {
+  const metrics = dependencies.metrics ?? new MetricsRegistry();
+  const logger = dependencies.logger ?? consoleLogger;
   return createServer((request, response) => {
-    route(request, response, dependencies).catch((error: unknown) => {
+    const startedAt = Date.now();
+    route(request, response, { ...dependencies, metrics, logger }).catch((error: unknown) => {
       const result = errorResponse(error);
-      if (result.statusCode >= 500) console.error("[api] erro interno", error);
+      if (result.statusCode >= 500) logger.error("api_internal_error", { method: request.method, path: request.url, statusCode: result.statusCode });
       if (!response.headersSent) json(response, result.statusCode, result.body);
       else response.destroy();
+    }).finally(() => {
+      metrics.increment("http_requests_total");
+      metrics.increment(`http_responses_${response.statusCode || 500}_total`);
+      logger.info("http_request", { method: request.method, path: request.url, statusCode: response.statusCode || 500, durationMs: Date.now() - startedAt });
     });
   });
 }
