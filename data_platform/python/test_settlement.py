@@ -43,6 +43,14 @@ class PostgresSettlementTest(unittest.TestCase):
         self.assertEqual(result["exceptions"][0]["category"], "MISSING_PAYMENT")
         replayed_run = service.reconcile(**command)
         self.assertEqual(replayed_run["run"]["runId"], result["run"]["runId"])
+        reprocessed = service.reprocess_exception(
+            exception_id=result["exceptions"][0]["exceptionId"],
+            tenant_id="tenant_settlement_test",
+            actor_id="test",
+            requested_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self.assertFalse(reprocessed["resolved"])
+        self.assertEqual(reprocessed["exceptions"][0]["category"], "MISSING_PAYMENT")
         resolved = service.resolve_exception(
             exception_id=result["exceptions"][0]["exceptionId"],
             tenant_id="tenant_settlement_test",

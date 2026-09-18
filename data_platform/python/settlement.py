@@ -275,3 +275,49 @@ class PostgresSettlementService:
                 cursor.execute("INSERT INTO audit_events (audit_id,tenant_id,actor_id,action,entity_type,entity_id,occurred_at,metadata) VALUES (%s,%s,%s,'EXCEPTION_RESOLVED','ExceptionCase',%s,%s,%s)", (f"audit:exception-resolve:{exception_id}:{resolved_at}", tenant_id, actor_id, exception_id, resolved_at, Jsonb({"reason": reason, "evidence": evidence, "category": row[2]})))
             cursor.execute("SELECT exception_id,tenant_id,run_id,item_id,batch_id,category,severity,status,expected_minor,observed_minor,difference_minor,currency,evidence_json,rule_version,reprocessable,created_at,resolved_at,resolution FROM exception_cases WHERE exception_id=%s", (exception_id,))
             return _map_exception(cursor.fetchone())
+
+    def reprocess_exception(self, exception_id: str, tenant_id: str, actor_id: str, requested_at: str) -> dict[str, Any]:
+        with psycopg.connect(self.database_url) as connection, connection.transaction(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT exception_id, tenant_id, batch_id, item_id, category, rule_version, status, reprocessable FROM exception_cases WHERE exception_id=%s FOR UPDATE",
+                (exception_id,),
+            )
+            exception = cursor.fetchone()
+            if exception is None or exception[1] != tenant_id:
+                raise SettlementNotFound("Exceção não encontrada.")
+            if not exception[7]:
+                raise SettlementError("Exceção não pode ser reprocessada.")
+            cursor.execute("UPDATE exception_cases SET status='REPROCESSING' WHERE exception_id=%s", (exception_id,))
+
+        try:
+            result = self.reconcile(
+                batch_id=exception[2],
+                tenant_id=tenant_id,
+                rule_version=exception[5],
+                idempotency_key=f"reprocess:{exception_id}:{requested_at}",
+                requested_at=requested_at,
+            )
+            location = ":".join(str(exception[3]).split(":")[-2:])
+            remains_open = any(
+                current.get("category") == exception[4] and str(current.get("itemId", "")).endswith(f":{location}")
+                for current in result["exceptions"]
+            )
+            with psycopg.connect(self.database_url) as connection, connection.transaction(), connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE exception_cases SET status=%s, resolved_at=%s, resolution=%s WHERE exception_id=%s",
+                    ("OPEN" if remains_open else "RESOLVED", None if remains_open else requested_at, None if remains_open else f"Reprocessado por {actor_id}.", exception_id),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events
+                      (audit_id, tenant_id, actor_id, action, entity_type, entity_id, occurred_at, metadata)
+                    VALUES (%s,%s,%s,'EXCEPTION_REPROCESSED','ExceptionCase',%s,%s,%s)
+                    ON CONFLICT (audit_id) DO NOTHING
+                    """,
+                    (f"audit:exception-reprocess:{exception_id}:{requested_at}", tenant_id, actor_id, exception_id, requested_at, Jsonb({"newRunId": result["run"]["runId"], "resolved": not remains_open, "category": exception[4]})),
+                )
+            return {**result, "resolved": not remains_open}
+        except Exception:
+            with psycopg.connect(self.database_url) as connection, connection.transaction(), connection.cursor() as cursor:
+                cursor.execute("UPDATE exception_cases SET status='OPEN' WHERE exception_id=%s AND status='REPROCESSING'", (exception_id,))
+            raise
