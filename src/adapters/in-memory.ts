@@ -67,6 +67,15 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
   public async save(record: IdempotencyRecord<PaymentCoreResult>): Promise<void> {
     this.items.set(idempotencyScopeKey(record), record);
   }
+
+  public async deleteExpired(now: string, limit: number): Promise<number> {
+    const expired = [...this.items.entries()]
+      .filter(([, record]) => Date.parse(record.expiresAt) <= Date.parse(now))
+      .sort(([, left], [, right]) => left.expiresAt.localeCompare(right.expiresAt))
+      .slice(0, limit);
+    for (const [key] of expired) this.items.delete(key);
+    return expired.length;
+  }
 }
 
 export class InMemoryAuditRepository implements AuditRepository {
@@ -95,6 +104,7 @@ export class InMemoryTransactionRunner implements TransactionRunner {
 
 export function createInMemoryPaymentCore(): {
   service: PaymentCoreService;
+  transaction: InMemoryTransactionRunner;
   payments: InMemoryPaymentRepository;
   ledger: InMemoryLedgerRepository;
   idempotency: InMemoryIdempotencyStore;
@@ -110,9 +120,10 @@ export function createInMemoryPaymentCore(): {
     idempotency,
     audit,
   };
+  const transaction = new InMemoryTransactionRunner(repositoryPorts);
   const ports: PaymentCorePorts = {
     ...repositoryPorts,
-    transaction: new InMemoryTransactionRunner(repositoryPorts),
+    transaction,
   };
-  return { service: new PaymentCoreService(ports), payments, ledger, idempotency, audit };
+  return { service: new PaymentCoreService(ports), transaction, payments, ledger, idempotency, audit };
 }

@@ -256,6 +256,23 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
       ],
     );
   }
+
+  public async deleteExpired(now: string, limit: number): Promise<number> {
+    const result = await this.db.query(
+      `WITH expired AS (
+         SELECT ctid
+         FROM idempotency_records
+         WHERE expires_at <= $1
+         ORDER BY expires_at
+         LIMIT $2
+       )
+       DELETE FROM idempotency_records records
+       USING expired
+       WHERE records.ctid = expired.ctid`,
+      [now, limit],
+    );
+    return result.rowCount ?? 0;
+  }
 }
 
 export class PostgresAuditRepository implements AuditRepository {
