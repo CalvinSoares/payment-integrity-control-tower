@@ -21,6 +21,9 @@ class EventStore(Protocol):
     def ready(self) -> bool:
         """Return whether the event store is ready for requests."""
 
+    def requeue_dead_letter(self, outbox_id: str, tenant_id: str, available_at: str | None = None) -> dict[str, str]:
+        """Requeue a dead-letter message for the authenticated tenant."""
+
 
 class EventHealthCheck(Protocol):
     """Minimal health port used by the API composition root."""
