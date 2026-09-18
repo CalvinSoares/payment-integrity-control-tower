@@ -5,6 +5,7 @@ import os
 import signal
 
 from .worker import PostgresEventWorker, default_database_url
+from .payment_processor import PaymentEventProcessor
 
 
 def main() -> None:
@@ -21,6 +22,7 @@ def main() -> None:
 
     worker = PostgresEventWorker(
         default_database_url(),
+        handler=PaymentEventProcessor(os.getenv("CONTROL_TOWER_WORKER_ACTOR_ID", "system:processor")),
         max_attempts=int(os.getenv("CONTROL_TOWER_WORKER_MAX_ATTEMPTS", "3")),
         base_delay_ms=int(os.getenv("CONTROL_TOWER_WORKER_BASE_DELAY_MS", "1000")),
         max_delay_ms=int(os.getenv("CONTROL_TOWER_WORKER_MAX_DELAY_MS", "60000")),
