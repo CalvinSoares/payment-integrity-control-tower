@@ -69,6 +69,7 @@ def create_app(
         return metrics.to_prometheus() + "\n"
 
     @app.post("/v1/events", response_model=IngestionReceipt, status_code=status.HTTP_202_ACCEPTED)
+    @app.post("/v1/payments/events", response_model=IngestionReceipt, status_code=status.HTTP_202_ACCEPTED)
     def receive(event: PaymentEvent, authenticated_tenant: str = Depends(require_token)) -> IngestionReceipt:
         if event.tenantId != authenticated_tenant:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant_forbidden")
@@ -167,6 +168,22 @@ def create_app(
                 reason=str(body.get("reason", "")),
                 evidence=evidence,
                 resolved_at=str(body.get("resolvedAt", "")),
+            )
+        except SettlementNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+        except SettlementError as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    @app.post("/v1/exceptions/{exception_id}/reprocess")
+    def reprocess_exception(exception_id: str, body: dict[str, Any], authenticated_tenant: str = Depends(require_token)) -> dict[str, Any]:
+        if settlement_service is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="settlement_unavailable")
+        try:
+            return settlement_service.reprocess_exception(
+                exception_id=exception_id,
+                tenant_id=authenticated_tenant,
+                actor_id=os.getenv("CONTROL_TOWER_API_ACTOR_ID", "system:ingestion"),
+                requested_at=str(body.get("requestedAt", "")),
             )
         except SettlementNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
