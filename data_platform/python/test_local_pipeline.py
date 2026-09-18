@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from normalize_events import payload_hash
-from run_local_pipeline import run
+from .normalize_events import payload_hash
+from .run_local_pipeline import run
 
 
 class LocalPipelineTest(unittest.TestCase):

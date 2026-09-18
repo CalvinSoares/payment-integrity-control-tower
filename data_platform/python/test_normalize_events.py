@@ -1,6 +1,6 @@
 import unittest
 
-from normalize_events import normalize, payload_hash, validate_event
+from .normalize_events import normalize, payload_hash, validate_event
 
 
 class NormalizeEventsTest(unittest.TestCase):

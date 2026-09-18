@@ -9,7 +9,10 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from normalize_events import normalize, validate_event
+try:
+    from .normalize_events import normalize, validate_event
+except ImportError:
+    from normalize_events import normalize, validate_event
 
 import sys
 
