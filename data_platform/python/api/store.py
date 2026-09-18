@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Protocol
 
 import psycopg
@@ -13,10 +14,24 @@ class EventConflict(Exception):
     pass
 
 
+class EventNotFound(Exception):
+    pass
+
+
+class EventTenantConflict(Exception):
+    pass
+
+
+class EventReplayConflict(Exception):
+    pass
+
+
 class EventStore(Protocol):
     def receive(self, event: PaymentEvent) -> IngestionReceipt: ...
 
     def ready(self) -> bool: ...
+
+    def requeue_dead_letter(self, outbox_id: str, tenant_id: str, available_at: str | None = None) -> dict[str, str]: ...
 
 
 class PostgresEventStore:
@@ -90,6 +105,45 @@ class PostgresEventStore:
             return True
         except psycopg.Error:
             return False
+
+    def requeue_dead_letter(self, outbox_id: str, tenant_id: str, available_at: str | None = None) -> dict[str, str]:
+        requested_at = available_at or datetime.now(timezone.utc).isoformat()
+        with psycopg.connect(self.database_url) as connection:
+            with connection.transaction():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT outbox_id, event_id, event_json, status FROM event_outbox WHERE outbox_id = %s FOR UPDATE",
+                        (outbox_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        raise EventNotFound("Mensagem não encontrada.")
+                    event = PaymentEvent.model_validate(row[2])
+                    if event.tenantId != tenant_id:
+                        raise EventTenantConflict("A mensagem não pertence ao tenant autenticado.")
+                    if row[3] != "DEAD_LETTER":
+                        raise EventReplayConflict("A mensagem não está na DLQ.")
+                    cursor.execute(
+                        """
+                        UPDATE event_outbox
+                        SET status = 'PENDING', attempts = 0, available_at = %s::timestamptz,
+                            processing_started_at = NULL, last_error = NULL
+                        WHERE outbox_id = %s
+                        """,
+                        (requested_at, outbox_id),
+                    )
+        deduplication_key = json.dumps(
+            [event.provider, event.providerAccountId, event.externalEventId],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return {
+            "status": "REQUEUED",
+            "outboxId": outbox_id,
+            "eventId": event.eventId,
+            "deduplicationKey": deduplication_key,
+            "availableAt": requested_at,
+        }
 
     @staticmethod
     def _find_by_deduplication_key(connection: psycopg.Connection, key: str) -> dict[str, str] | None:
