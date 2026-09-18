@@ -19,6 +19,17 @@ class FakeStore:
         return True
 
 
+class FakeQueries:
+    def get_payment_timeline(self, payment_id: str, tenant_id: str):
+        return {"payment": {"id": payment_id, "tenantId": tenant_id}, "events": [], "ledger": [], "audit": [], "settlementItems": [], "exceptions": []}
+
+    def get_payment_ledger(self, payment_id: str, tenant_id: str):
+        return []
+
+    def list_exceptions(self, tenant_id: str, status: str | None, category: str | None, limit: int):
+        return [{"tenantId": tenant_id, "status": status, "category": category, "limit": limit}]
+
+
 def valid_event():
     data = {"amountMinor": 1000, "currency": "BRL", "externalPaymentId": "external_api", "paymentId": "pay_api"}
     return {
@@ -32,14 +43,14 @@ def valid_event():
 
 class PythonApiTest(unittest.TestCase):
     def test_requires_bearer_token(self):
-        client = TestClient(create_app(FakeStore(), "test-token"))
+        client = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api"))
         response = client.post("/v1/events", json=valid_event())
         self.assertEqual(response.status_code, 401)
 
 
     def test_accepts_valid_event(self):
         store = FakeStore()
-        client = TestClient(create_app(store, "test-token"))
+        client = TestClient(create_app(store, "test-token", tenant_id="tenant_api"))
         response = client.post("/v1/events", headers={"Authorization": "Bearer test-token"}, json=valid_event())
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["status"], "RECEIVED")
@@ -49,6 +60,26 @@ class PythonApiTest(unittest.TestCase):
     def test_rejects_tampered_payload(self):
         event = valid_event()
         event["data"]["amountMinor"] = 999
-        client = TestClient(create_app(FakeStore(), "test-token"))
+        client = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api"))
         response = client.post("/v1/events", headers={"Authorization": "Bearer test-token"}, json=event)
         self.assertEqual(response.status_code, 422)
+
+    def test_rejects_event_from_another_tenant(self):
+        event = valid_event()
+        event["tenantId"] = "tenant_other"
+        client = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api"))
+        response = client.post("/v1/events", headers={"Authorization": "Bearer test-token"}, json=event)
+        self.assertEqual(response.status_code, 403)
+
+    def test_exposes_control_tower_queries_and_metrics(self):
+        client = TestClient(create_app(FakeStore(), "test-token", tenant_id="tenant_api", queries=FakeQueries()))
+        headers = {"Authorization": "Bearer test-token"}
+        timeline = client.get("/v1/payments/pay_api/timeline", headers=headers)
+        self.assertEqual(timeline.status_code, 200)
+        self.assertEqual(timeline.json()["payment"]["tenantId"], "tenant_api")
+        exceptions = client.get("/v1/exceptions?status=OPEN&category=AMOUNT_MISMATCH&limit=7", headers=headers)
+        self.assertEqual(exceptions.status_code, 200)
+        self.assertEqual(exceptions.json()["exceptions"][0]["limit"], 7)
+        metrics = client.get("/v1/metrics")
+        self.assertEqual(metrics.status_code, 200)
+        self.assertIn("http_requests_total", metrics.text)

@@ -11,6 +11,7 @@ from .api.models import PaymentEvent
 from .api.store import PostgresEventStore
 from .api.test_api import valid_event
 from .payment_processor import PaymentEventProcessor
+from .api.queries import PostgresControlTowerQueries
 from .worker import PostgresEventWorker
 
 
@@ -80,3 +81,11 @@ class PostgresPaymentProcessorTest(unittest.TestCase):
                 self.assertEqual(cursor.fetchone()[0], 2)
                 cursor.execute("SELECT status FROM event_outbox WHERE event_id = %s", (captured.eventId,))
                 self.assertEqual(cursor.fetchone()[0], "PUBLISHED")
+
+        queries = PostgresControlTowerQueries(self.database_url)
+        timeline = queries.get_payment_timeline(payment_id, authorized.tenantId)
+        self.assertIsNotNone(timeline)
+        self.assertEqual(timeline["payment"]["state"], "CAPTURED")
+        self.assertEqual(len(timeline["events"]), 2)
+        self.assertEqual(len(timeline["ledger"]), 1)
+        self.assertIsNone(queries.get_payment_timeline(payment_id, "tenant_other"))

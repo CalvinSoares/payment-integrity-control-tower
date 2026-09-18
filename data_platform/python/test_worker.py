@@ -10,6 +10,7 @@ import psycopg
 from .api.models import PaymentEvent
 from .api.test_api import valid_event
 from .api.store import PostgresEventStore
+from .api.store import EventReplayConflict
 from .worker import PostgresEventWorker
 
 
@@ -67,3 +68,20 @@ class PostgresWorkerTest(unittest.TestCase):
                 self.assertEqual(cursor.fetchone(), ("REJECTED", 2))
                 cursor.execute("SELECT status, attempts FROM event_outbox WHERE event_id = %s", (event.eventId,))
                 self.assertEqual(cursor.fetchone(), ("DEAD_LETTER", 2))
+
+        receipt = PostgresEventStore(self.database_url).requeue_dead_letter(
+            f"outbox:{event.eventId}", event.tenantId, "2020-01-01T00:00:00Z"
+        )
+        self.assertEqual(receipt["status"], "REQUEUED")
+        with psycopg.connect(self.database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT status, attempts, last_error FROM event_outbox WHERE event_id = %s", (event.eventId,))
+                self.assertEqual(cursor.fetchone(), ("PENDING", 0, None))
+        with self.assertRaises(EventReplayConflict):
+            PostgresEventStore(self.database_url).requeue_dead_letter(f"outbox:{event.eventId}", event.tenantId)
+        self.assertEqual(
+            PostgresEventWorker(self.database_url, lambda _event, _connection: None).process_next(
+                datetime(2020, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+            ).status,
+            "APPLIED",
+        )
