@@ -50,13 +50,13 @@ class EventAnalyticsProjector:
                 bronze.write(json.dumps(event_mapping, ensure_ascii=False, separators=(",", ":")) + "\n")
                 silver.write(json.dumps(normalized, ensure_ascii=False, separators=(",", ":")) + "\n")
 
-            from data_platform.lake.ingest_to_lake import write_parquet
-            from data_platform.warehouse.build_warehouse import build_warehouse
+            from .lake import write_parquet
+            from .warehouse import build_warehouse
 
             write_parquet(silver_path, parquet_path)
             build_warehouse(parquet_path, self.warehouse_path)
             if self.minio_endpoint:
-                from data_platform.lake.ingest_to_lake import upload_to_minio
+                from .lake import upload_to_minio
 
                 upload_to_minio(parquet_path, self.minio_endpoint, self.minio_access_key, self.minio_secret_key, self.minio_bucket, self.minio_object_name)
             logger.info("analytics_projection_applied event_id=%s parquet=%s", event.event_id, parquet_path)
