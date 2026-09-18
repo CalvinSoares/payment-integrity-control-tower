@@ -13,7 +13,7 @@ from .api.models import PaymentEvent
 
 
 logger = logging.getLogger("payment-integrity.worker")
-EventHandler = Callable[[PaymentEvent], None]
+EventHandler = Callable[[PaymentEvent, psycopg.Connection[Any]], None]
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ class PostgresEventWorker:
         self.lease_ms = lease_ms
 
     @staticmethod
-    def log_event(event: PaymentEvent) -> None:
+    def log_event(event: PaymentEvent, _connection: psycopg.Connection[Any]) -> None:
         logger.info(
             "event_processed event_id=%s event_type=%s tenant_id=%s",
             event.eventId,
@@ -81,7 +81,7 @@ class PostgresEventWorker:
                 inbox_id = inbox[0]
                 self._mark_inbox_processing(connection, inbox_id)
                 try:
-                    self.handler(event)
+                    self.handler(event, connection)
                 except Exception as error:  # noqa: BLE001 - falha do handler precisa entrar no retry
                     return self._schedule_failure(connection, outbox_id, inbox_id, event_id, now_iso, attempts, error)
 

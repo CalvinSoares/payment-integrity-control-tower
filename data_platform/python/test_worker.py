@@ -36,7 +36,7 @@ class PostgresWorkerTest(unittest.TestCase):
         PostgresEventStore(self.database_url).receive(event)
         self.make_available_first(event)
         processed: list[str] = []
-        result = PostgresEventWorker(self.database_url, lambda received: processed.append(received.eventId)).process_next(
+        result = PostgresEventWorker(self.database_url, lambda received, _connection: processed.append(received.eventId)).process_next(
             datetime(2020, 1, 1, 0, 0, 2, tzinfo=timezone.utc)
         )
         self.assertEqual(result.status, "APPLIED")
@@ -53,7 +53,7 @@ class PostgresWorkerTest(unittest.TestCase):
         PostgresEventStore(self.database_url).receive(event)
         self.make_available_first(event)
 
-        def fail(_event: PaymentEvent) -> None:
+        def fail(_event: PaymentEvent, _connection: object) -> None:
             raise RuntimeError("falha simulada")
 
         worker = PostgresEventWorker(self.database_url, fail, max_attempts=2, base_delay_ms=1)

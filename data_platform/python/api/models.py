@@ -8,6 +8,19 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from ..normalize_events import payload_hash
 
 
+PAYMENT_EVENT_TYPES = {
+    "payment.authorized",
+    "payment.captured",
+    "payment.settled",
+    "payment.paid_out",
+    "payment.canceled",
+    "payment.voided",
+    "payment.refunded",
+    "payment.chargeback",
+    "provider.timeout",
+}
+
+
 class PaymentEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -34,6 +47,10 @@ class PaymentEvent(BaseModel):
         for field in text_fields:
             if not getattr(self, field).strip():
                 raise ValueError(f"{field} é obrigatório")
+        if self.eventType not in PAYMENT_EVENT_TYPES:
+            raise ValueError(f"Tipo de evento não suportado: {self.eventType}")
+        if not isinstance(self.data.get("paymentId"), str) or not self.data["paymentId"].strip():
+            raise ValueError("paymentId é obrigatório nos dados do evento")
         for field in ("occurredAt", "receivedAt"):
             try:
                 datetime.fromisoformat(getattr(self, field).replace("Z", "+00:00"))
