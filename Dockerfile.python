@@ -2,10 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY data_platform/python/requirements.txt /app/data_platform/python/requirements.txt
-RUN pip install --no-cache-dir -r /app/data_platform/python/requirements.txt
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY data_platform /app/data_platform
 COPY src /app/src
 
 ENV PYTHONUNBUFFERED=1
