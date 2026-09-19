@@ -19,8 +19,8 @@ def payment_integrity_pipeline():
     @task
     def run_pipeline():
         project_root = Path(os.environ.get("CONTROL_TOWER_ROOT", "/opt/airflow/project"))
-        sys.path.insert(0, str(project_root / "data_platform" / "python"))
-        from run_local_pipeline import run
+        sys.path.insert(0, str(project_root / "src"))
+        from payment_integrity.analytics.local_pipeline import run
 
         input_path = Path(os.environ.get("CONTROL_TOWER_INPUT", project_root / "data" / "events.ndjson"))
         lake_root = Path(os.environ.get("CONTROL_TOWER_LAKE_ROOT", project_root / "lake"))

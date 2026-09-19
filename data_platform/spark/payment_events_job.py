@@ -20,7 +20,10 @@ def run(input_path: Path, output_path: Path, master: str = "local[*]", dry_run: 
         from pyspark.sql import SparkSession
         from pyspark.sql.functions import countDistinct, current_timestamp, col
     except ModuleNotFoundError as error:
-        raise RuntimeError("PySpark não está instalado. Use o fallback data_platform/python/run_local_pipeline.py ou instale data_platform/spark/requirements.txt.") from error
+        raise RuntimeError(
+            "PySpark não está instalado. Use python -m payment_integrity.analytics.local_pipeline "
+            "--input <events.ndjson> ou instale data_platform/spark/requirements.txt."
+        ) from error
 
     spark = SparkSession.builder.master(master).appName("payment-integrity-events").config(
         "spark.sql.shuffle.partitions", "4"
