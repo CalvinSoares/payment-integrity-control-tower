@@ -124,6 +124,15 @@ python -B -m unittest discover -s tests -p 'test_*.py' -v
 
 Os testes cobrem validação de eventos, tenant, deduplicação, retry, DLQ, reconciliação, replay, resolução, ledger e projeção analítica.
 
+Para executar o pipeline analítico local sem Spark:
+
+```bash
+PYTHONPATH=src python -m payment_integrity.analytics.local_pipeline \
+  --input data/events.ndjson \
+  --lake-root runtime/lake \
+  --warehouse runtime/warehouse/payment_integrity.duckdb
+```
+
 ## Rotas principais
 
 Health e observabilidade:
